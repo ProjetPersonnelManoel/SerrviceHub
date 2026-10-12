@@ -18,6 +18,7 @@ vi.mock("../src/repositories/auth.repositories", () => ({
       password: string;
       firstName: string;
       lastName: string;
+      city: string;
       role?: User["role"];
     }) {
       const user: User = {
@@ -27,7 +28,7 @@ vi.mock("../src/repositories/auth.repositories", () => ({
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
-        city: null,
+        city: data.city,
         emailVerified: false,
         isActive: true,
         createdAt: new Date(),
@@ -51,6 +52,7 @@ const validUser = {
   password: "MotDePasse123",
   firstName: "Jean",
   lastName: "Dupont",
+  city: "Paris",
 };
 
 const getCookies = (res: request.Response) =>
@@ -99,6 +101,7 @@ describe("POST /api/auth/register", () => {
       email: "jean.dupont@mail.com", // trim + minuscules
       firstName: "Jean",
       role: "CLIENT",
+      city: "Paris",
     });
     expect(res.body.user.password).toBeUndefined();
     expect(res.body.token).toBeUndefined(); // le JWT n'est que dans le cookie
@@ -129,6 +132,8 @@ describe("POST /api/auth/register", () => {
     expect(res.body.errors).toHaveProperty("email");
     expect(res.body.errors).toHaveProperty("password");
     expect(res.body.errors).toHaveProperty("firstName");
+    expect(res.body.errors).toHaveProperty("lastName");
+    expect(res.body.errors).toHaveProperty("city");
   });
 
   it("refuse le rôle ADMIN à l'inscription (400)", async () => {
@@ -229,7 +234,10 @@ describe("PATCH /api/auth/password", () => {
     const res = await request(app)
       .patch("/api/auth/password")
       .set("Cookie", cookie)
-      .send({ currentPassword: validUser.password, newPassword: "NouveauMdp456" });
+      .send({
+        currentPassword: validUser.password,
+        newPassword: "NouveauMdp456",
+      });
     expect(res.status).toBe(204);
 
     // L'ancien mot de passe ne fonctionne plus, le nouveau oui

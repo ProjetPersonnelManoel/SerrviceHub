@@ -16,11 +16,15 @@ const ROLES = [
 export function RegisterForm() {
   const router = useRouter();
 
-  async function register(_prev: FormState, formData: FormData): Promise<FormState> {
+  async function register(
+    _prev: FormState,
+    formData: FormData,
+  ): Promise<FormState> {
     const values = {
       firstName: String(formData.get("firstName") ?? ""),
       lastName: String(formData.get("lastName") ?? ""),
       email: String(formData.get("email") ?? ""),
+      city: String(formData.get("city") ?? ""),
       role: String(formData.get("role") ?? "CLIENT"),
     };
     const password = String(formData.get("password") ?? "");
@@ -41,7 +45,8 @@ export function RegisterForm() {
         body: JSON.stringify({ ...values, password }),
       });
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError(0, "Une erreur est survenue");
+      const err =
+        e instanceof ApiError ? e : new ApiError(0, "Une erreur est survenue");
       return { message: err.message, errors: err.errors, values };
     }
     router.replace("/dashboard");
@@ -54,7 +59,12 @@ export function RegisterForm() {
 
   return (
     // key : remonte le formulaire pour réappliquer les defaultValue après une erreur
-    <form key={JSON.stringify(v)} action={formAction} className="flex flex-col gap-4" noValidate>
+    <form
+      key={JSON.stringify(v)}
+      action={formAction}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       <FormMessage message={state.errors ? undefined : state.message} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -84,6 +94,14 @@ export function RegisterForm() {
         required
         defaultValue={v?.email}
         errors={state.errors?.email}
+      />
+      <FormField
+        label="Ville"
+        name="city"
+        autoComplete="address-level2"
+        required
+        defaultValue={v?.city}
+        errors={state.errors?.city}
       />
 
       <fieldset className="flex flex-col gap-1.5">

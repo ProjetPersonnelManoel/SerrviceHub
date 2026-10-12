@@ -5,7 +5,7 @@ export interface User {
   role: "CLIENT" | "PRESTATAIRE" | "ADMIN";
   firstName: string;
   lastName: string;
-  city: string | null;
+  city: string;
   emailVerified: boolean;
   isActive: boolean;
   createdAt: Date;

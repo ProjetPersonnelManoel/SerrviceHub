@@ -18,16 +18,23 @@ export default async function DashboardPage() {
   // L'en-tête (navigation, déconnexion) est dans dashboard/layout.tsx
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Bonjour {user.firstName} 👋</h1>
-      <p className="mt-1 text-zinc-600 dark:text-zinc-400">Vous êtes connecté.</p>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        Bonjour {user.firstName} 👋
+      </h1>
+      <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        Vous êtes connecté.
+      </p>
 
       <dl className="mt-8 grid grid-cols-1 gap-4 rounded-2xl border border-zinc-200 bg-white p-6 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-950">
         <Info label="Nom" value={`${user.firstName} ${user.lastName}`} />
         <Info label="Email" value={user.email} />
+        <Info label="Ville" value={user.city} />
         <Info label="Type de compte" value={ROLE_LABELS[user.role]} />
         <Info
           label="Membre depuis"
-          value={new Date(user.createdAt).toLocaleDateString("fr-FR", { dateStyle: "long" })}
+          value={new Date(user.createdAt).toLocaleDateString("fr-FR", {
+            dateStyle: "long",
+          })}
         />
       </dl>
     </>

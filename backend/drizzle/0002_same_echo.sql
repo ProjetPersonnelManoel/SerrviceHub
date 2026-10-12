@@ -1,0 +1,1 @@
+ALTER TABLE `users` MODIFY COLUMN `city` varchar(100) NOT NULL;

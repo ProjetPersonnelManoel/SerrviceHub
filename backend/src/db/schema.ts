@@ -39,7 +39,7 @@ export const users = mysqlTable("users", {
     .notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
-  city: varchar("city", { length: 100 }),
+  city: varchar("city", { length: 100 }).notNull(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { fsp: 3 }).defaultNow().notNull(),
