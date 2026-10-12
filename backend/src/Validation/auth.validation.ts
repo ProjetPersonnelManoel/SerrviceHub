@@ -18,6 +18,7 @@ export const registerSchema = z.object({
   password: newPasswordField,
   firstName: z.string("Prénom requis").trim().min(1, "Prénom requis").max(100),
   lastName: z.string("Nom requis").trim().min(1, "Nom requis").max(100),
+  city: z.string("Ville requise").trim().min(1, "Ville requise").max(100),
   role: z.enum(["CLIENT", "PRESTATAIRE"]).optional(), // pas ADMIN à l'inscription !
 });
 
