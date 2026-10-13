@@ -1,0 +1,670 @@
+openapi: 3.0.3
+info:
+  title: ServiceHub API
+  version: 1.0.0
+  description: |
+    API de mise en relation entre clients et prestataires de services.
+
+    **Authentification** : le JWT est stocké dans un cookie httpOnly `token`, posé par
+    `/auth/register` et `/auth/login`. Depuis cette page, connectez-vous avec
+    `POST /auth/login` : le navigateur renverra ensuite le cookie automatiquement.
+
+    **Erreurs** : toujours au format `{ "message": "..." }`. Les erreurs de validation (400)
+    ajoutent `errors`, un objet `champ -> liste de messages`.
+
+servers:
+  - url: /api
+
+tags:
+  - name: Auth
+    description: Inscription, connexion et session
+  - name: Categories
+    description: Catégories de services (2 niveaux, catégorie puis sous-catégorie)
+  - name: Divers
+    description: Santé du serveur
+
+paths:
+  /ping:
+    get:
+      tags: [Divers]
+      summary: Vérifie que le serveur répond
+      operationId: ping
+      security: []
+      responses:
+        "200":
+          description: Le serveur répond
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+
+  # ---------------------------------------------------------------- Auth
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Créer un compte
+      operationId: register
+      security: []
+      description: |
+        Crée le compte et connecte directement l'utilisateur (pose le cookie `token`).
+        Le rôle `ADMIN` est interdit à l'inscription.
+        Limite : 10 requêtes par 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Compte créé, cookie `token` posé
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Email déjà utilisé
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Email déjà utilisé
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Se connecter
+      operationId: login
+      security: []
+      description: |
+        Pose le cookie `token`.
+        Limite : 5 échecs par 15 minutes (les connexions réussies ne comptent pas).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Connecté, cookie `token` posé
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Email ou mot de passe incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Identifiants invalides
+        "403":
+          description: Compte désactivé
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                message: Compte désactivé
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Se déconnecter
+      operationId: logout
+      security: []
+      description: Efface le cookie `token`. Ne nécessite pas d'être connecté.
+      responses:
+        "204":
+          description: Déconnecté
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Utilisateur connecté
+      operationId: getMe
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Profil de l'utilisateur connecté
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Utilisateur introuvable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/password:
+    patch:
+      tags: [Auth]
+      summary: Changer son mot de passe
+      operationId: changePassword
+      description: |
+        L'utilisateur reste connecté après la modification.
+        Limite : 10 requêtes par 15 minutes.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Mot de passe modifié
+        "400":
+          description: Données invalides ou mot de passe actuel incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                actuelIncorrect:
+                  summary: Mot de passe actuel incorrect
+                  value:
+                    message: Mot de passe actuel incorrect
+                identique:
+                  summary: Nouveau mot de passe identique
+                  value:
+                    message: Données invalides
+                    errors:
+                      newPassword:
+                        - "Le nouveau mot de passe doit être différent de l'actuel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  # ---------------------------------------------------------------- Categories
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Arbre des catégories
+      operationId: listCategories
+      security: []
+      description: |
+        Public. Renvoie les catégories principales triées par nom, chacune avec ses
+        sous-catégories dans `children`.
+      responses:
+        "200":
+          description: Arbre des catégories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CategoryTree"
+    post:
+      tags: [Categories]
+      summary: Créer une catégorie (ADMIN)
+      operationId: createCategory
+      description: |
+        Sans `parentId` (ou avec `null`) : catégorie principale.
+        Avec `parentId` : sous-catégorie. Le parent doit exister et être une catégorie
+        principale (2 niveaux maximum).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryRequest"
+      responses:
+        "201":
+          description: Catégorie créée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          description: Données invalides, parent introuvable ou 3e niveau
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                parentIntrouvable:
+                  summary: Parent inexistant
+                  value:
+                    message: Catégorie parente introuvable
+                troisiemeNiveau:
+                  summary: Parent qui est déjà une sous-catégorie
+                  value:
+                    message: Une sous-catégorie ne peut pas avoir de sous-catégories
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/DuplicateCategory"
+
+  /categories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/CategoryId"
+    get:
+      tags: [Categories]
+      summary: Détail d'une catégorie
+      operationId: getCategory
+      security: []
+      description: Public. Renvoie la catégorie avec ses sous-catégories.
+      responses:
+        "200":
+          description: Catégorie trouvée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    $ref: "#/components/schemas/CategoryTree"
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "404":
+          $ref: "#/components/responses/CategoryNotFound"
+    patch:
+      tags: [Categories]
+      summary: Modifier une catégorie (ADMIN)
+      operationId: updateCategory
+      description: |
+        Au moins un champ requis. `parentId: null` transforme une sous-catégorie en
+        catégorie principale. Une catégorie qui a des sous-catégories ne peut pas être
+        déplacée sous un parent.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdateRequest"
+      responses:
+        "200":
+          description: Catégorie modifiée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          description: Données invalides ou parent invalide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                vide:
+                  summary: Aucun champ fourni
+                  value:
+                    message: Données invalides
+                    errors:
+                      name:
+                        - Aucune modification fournie
+                propreParent:
+                  summary: Catégorie choisie comme son propre parent
+                  value:
+                    message: Une catégorie ne peut pas être son propre parent
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CategoryNotFound"
+        "409":
+          $ref: "#/components/responses/DuplicateCategory"
+    delete:
+      tags: [Categories]
+      summary: Supprimer une catégorie (ADMIN)
+      operationId: deleteCategory
+      description: |
+        Refusé si la catégorie a des sous-catégories, ou si elle est utilisée par une
+        demande ou un prestataire.
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Catégorie supprimée
+        "400":
+          $ref: "#/components/responses/InvalidId"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/CategoryNotFound"
+        "409":
+          description: Catégorie encore utilisée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                enfants:
+                  summary: A des sous-catégories
+                  value:
+                    message: "Supprimez d'abord les sous-catégories de cette catégorie"
+                utilisee:
+                  summary: Utilisée
+                  value:
+                    message: Cette catégorie est utilisée par des demandes ou des prestataires
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+      description: JWT posé par /auth/login ou /auth/register (httpOnly)
+
+  headers:
+    AuthCookie:
+      description: "Cookie de session : token=<JWT>; HttpOnly; SameSite=Lax; Path=/"
+      schema:
+        type: string
+
+  parameters:
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      description: Identifiant de la catégorie (entier positif)
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ValidationError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: Données invalides
+        errors:
+          type: object
+          description: Messages d'erreur par champ
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email:
+              - Email invalide
+
+    Role:
+      type: string
+      enum: [CLIENT, PRESTATAIRE, ADMIN]
+
+    User:
+      type: object
+      description: Utilisateur public (le mot de passe n'est jamais renvoyé)
+      properties:
+        id:
+          type: integer
+          example: 7
+        email:
+          type: string
+          format: email
+          example: jean.dupont@mail.com
+        role:
+          $ref: "#/components/schemas/Role"
+        firstName:
+          type: string
+          example: Jean
+        lastName:
+          type: string
+          example: Dupont
+        city:
+          type: string
+          example: Montréal
+        emailVerified:
+          type: boolean
+          example: false
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+
+    UserResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName, city]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Espaces retirés et converti en minuscules
+          example: jean.dupont@mail.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          example: MotDePasse123
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Jean
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Dupont
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Montréal
+        role:
+          type: string
+          enum: [CLIENT, PRESTATAIRE]
+          default: CLIENT
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: jean.dupont@mail.com
+        password:
+          type: string
+          format: password
+          example: MotDePasse123
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          example: MotDePasse123
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: Doit être différent du mot de passe actuel
+          example: NouveauMotDePasse456
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 12
+        name:
+          type: string
+          example: Plomberie
+        parentId:
+          type: integer
+          nullable: true
+          description: null pour une catégorie principale
+          example: 1
+
+    CategoryTree:
+      allOf:
+        - $ref: "#/components/schemas/Category"
+        - type: object
+          properties:
+            children:
+              type: array
+              items:
+                $ref: "#/components/schemas/Category"
+      example:
+        id: 1
+        name: Maison
+        parentId: null
+        children:
+          - id: 12
+            name: Plomberie
+            parentId: 1
+          - id: 13
+            name: Électricité
+            parentId: 1
+
+    CategoryResponse:
+      type: object
+      properties:
+        category:
+          $ref: "#/components/schemas/Category"
+
+    CategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Plomberie
+        parentId:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Absent ou null pour une catégorie principale
+          example: 1
+
+    CategoryUpdateRequest:
+      type: object
+      description: Au moins un des deux champs est requis
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Plomberie et chauffage
+        parentId:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+
+  responses:
+    ValidationError:
+      description: Données invalides
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+
+    Unauthorized:
+      description: Non connecté ou session expirée
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Non authentifié
+
+    Forbidden:
+      description: Rôle insuffisant (ADMIN requis)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Accès interdit
+
+    TooManyRequests:
+      description: Trop de tentatives, réessayer dans 15 minutes
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InvalidId:
+      description: Id invalide (pas un entier positif)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+          example:
+            message: Données invalides
+            errors:
+              id:
+                - Id invalide
+
+    CategoryNotFound:
+      description: Catégorie introuvable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Catégorie introuvable
+
+    DuplicateCategory:
+      description: Une catégorie de même nom existe déjà sous ce parent
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Une catégorie avec ce nom existe déjà à cet endroit
