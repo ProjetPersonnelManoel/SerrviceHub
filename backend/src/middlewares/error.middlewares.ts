@@ -14,6 +14,13 @@ function isDuplicateEntry(err: unknown): boolean {
   return e?.code === "ER_DUP_ENTRY" || e?.cause?.code === "ER_DUP_ENTRY";
 }
 
+// Suppression d'une ligne encore référencée par une clé étrangère (ex. catégorie utilisée par une demande)
+function isRowReferenced(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  const code = e?.code ?? e?.cause?.code;
+  return code === "ER_ROW_IS_REFERENCED_2" || code === "ER_ROW_IS_REFERENCED";
+}
+
 // Gestionnaire d'erreurs global (doit être enregistré après toutes les routes)
 export function errorHandler(
   err: unknown,
@@ -30,6 +37,13 @@ export function errorHandler(
   // Ex. deux inscriptions simultanées avec le même email
   if (isDuplicateEntry(err)) {
     return res.status(409).json({ message: "Cette ressource existe déjà" });
+  }
+
+  // Filet de sécurité si une vérification du service a été contournée (ex. requête simultanée)
+  if (isRowReferenced(err)) {
+    return res
+      .status(409)
+      .json({ message: "Cette ressource est encore utilisée ailleurs" });
   }
 
   // Erreurs d'Express (ex. JSON mal formé : status 400)
