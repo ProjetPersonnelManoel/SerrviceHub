@@ -22,6 +22,9 @@ const connection = mysql.createPool({
 
 export const db = drizzle(connection, { schema, mode: "default" });
 
+// Ferme le pool (scripts ponctuels comme le seed, sinon Node reste bloqué)
+export const closeConnection = () => connection.end();
+
 export const testConnection = async (): Promise<{
   success: boolean;
   error?: string;
