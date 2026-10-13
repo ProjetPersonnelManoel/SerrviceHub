@@ -7,6 +7,7 @@ import yaml from "yamljs";
 import path from "path";
 import swaggerUi from "swagger-ui-express";
 import { authRouter } from "./routes/auth.routes";
+import { categoriesRouter } from "./routes/categories.routes";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middlewares";
 
 // Construit l'application sans la démarrer (utilisé par server.ts et par les tests)
@@ -45,6 +46,7 @@ export const createApp = () => {
   });
 
   app.use("/api/auth", authRouter());
+  app.use("/api/categories", categoriesRouter());
 
   // Gestion des erreurs (après toutes les routes)
   app.use(notFoundHandler);
